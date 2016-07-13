@@ -6,7 +6,7 @@ from collections import namedtuple
 networkTuple = namedtuple('networkTuple', 'device, sent, recv, pkg_sent, pkg_recv')
 
 def memUsageEachProcess():
-    for id in .pids():
+    for id in pu.pids():
         p = pu.Process(id)
         mem = p.memory_info()[0]/float(2**20)
         total+=mem
@@ -45,10 +45,13 @@ def cpuUsage():
 
 def NetworkUsage():
     networks = list()
+    sentTotal = 0
+    recvTotal = 0
     for k,v in pu.net_io_counters(pernic=True).items():
         if k == 'lo':
             continue
-
+        sentTotal += v.bytes_sent
+        recvTotal += v.bytes_recv
         networks.append(
             networkTuple(
                 device = k,
@@ -58,6 +61,8 @@ def NetworkUsage():
                 pkg_recv = v.packets_recv
             )
         )
+    
+    return "Sent: "+humanize(sentTotal)+" / Recv: "+humanize(recvTotal)
 
 def humanize(num):
     for x in ['bytes', 'KB', 'MB', 'GB']:
