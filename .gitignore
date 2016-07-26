@@ -1,3 +1,10 @@
 usage_function_version1.pyc
 untitled-3.py
 *.pyc
+dist/*
+build/*
+*.dll
+sysmonitor_version1.spec
+SystemMonitor.zip
+=======
+*.pyc

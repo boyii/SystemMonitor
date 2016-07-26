@@ -46,7 +46,7 @@ except AttributeError:
     def _translate(context, text, disambig):
         return QtGui.QApplication.translate(context, text, disambig)
 
-icon_path = os.path.join( os.path.dirname(os.path.realpath(__file__)), 'SMS.bmp')
+icon_path = os.path.join( os.getcwd(), 'SMS.bmp')
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -377,9 +377,12 @@ class DetailTableModel(QAbstractTableModel):
         arraydata__ = getProcessResource()
         arraydata_ = []
         for pid in arraydata__:
-            arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][0] ]
-            arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][1] ]
-            arraydata_.append( arraydata__[pid] )
+            try:
+                arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][0] ]
+                arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][1] ]
+                arraydata_.append( arraydata__[pid] )
+            except:
+                continue
         if Ncol == 0:
             self.arraydata = sorted(arraydata_, key=lambda s: s[Ncol].lower())
         else:
