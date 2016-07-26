@@ -17,6 +17,7 @@ import numpy as np
 from pyqtgraph import GraphicsWindow
 import pyqtgraph
 from Win10_warning import Windows10_notification
+import os 
 
 beforeDiskRead = 0
 beforeDiskWrite = 0
@@ -44,6 +45,8 @@ try:
 except AttributeError:
     def _translate(context, text, disambig):
         return QtGui.QApplication.translate(context, text, disambig)
+
+icon_path = os.path.join( os.path.dirname(os.path.realpath(__file__)), 'SMS.bmp')
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -140,7 +143,8 @@ class Ui_MainWindow(object):
         self.netUsage.setText("Sent: 0.0 bytes/s | Recv: 0.0 bytes/s")
 
     def retranslateUi(self, MainWindow):
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow", None))
+        MainWindow.setWindowTitle(_translate("MainWindow", "SMS", None))
+        MainWindow.setWindowIcon(QtGui.QIcon(icon_path))          
         self.label.setText(_translate("MainWindow", "CPU usage:      ", None))
         self.label_3.setText(_translate("MainWindow", "Memory usage: ", None))
         self.label_2.setText(_translate("MainWindow", "Disk usage:      ", None))
@@ -162,12 +166,12 @@ class Ui_MainWindow(object):
         for pid in pu.pids():
             try:
                 p = getProcess(pid)
-                if warnCountList[pid][0] == 0 and getCPUusage(p) > 50:
+                if warnCountList[pid][0] == 0 and getCPUusage(p) > 50 and pid != 0:
                     warnCountList[pid][0] = 20
                     popMsg.show("CPU usage warning",p.name()+" spends a lot of cpu resource")
                 elif getCPUusage(p) > 50:
                     warnCountList[pid][0] -= 1
-                if warnCountList[pid][1] == 0 and getMemUsage(p) > 1024 * 1024 * 1024:
+                if warnCountList[pid][1] == 0 and getMemUsage(p) > 1024 * 1024 * 1024 and pid != 4:
                     warnCountList[pid][1] = 20
                     popMsg.show("Memory usage warning",p.name()+" spends a lot of memory resource") 
                 elif getMemUsage(p) > 1024 * 1024 * 1024:
@@ -175,7 +179,7 @@ class Ui_MainWindow(object):
             except KeyError:
                 warnCountList[pid] = [0, 0]
             except pu.NoSuchProcess:
-                del warnCountList[pid]
+                continue
                 
         self.memUsage.setValue(memUsage())
         self.cpuUsage.setValue(cpuUsage())
@@ -199,11 +203,11 @@ class Ui_MainWindow(object):
         self.w.show()
        
     def netPopExtend(self):
-        #self.nw = NetDetailWindow()
-        #self.nw.show()
+
         self.nw = GraphicsWindow()
-        
-        # 3) Plot in chunks, adding one new plot curve for every 100 samples
+        self.nw.setWindowTitle(_translate("MainWindow", "SMS", None))
+        self.nw.setWindowIcon(QtGui.QIcon(icon_path))         
+        # Plot in chunks, adding one new plot curve for every 100 samples
         self.chunkSize = 10
         # Remove chunks after we have 10
         self.maxChunks = 20
@@ -268,7 +272,8 @@ class DetailWindow(QWidget):
         self.tabledata = []
         self.get_table_data()
         table = self.createTable() 
-         
+        self.setWindowTitle("SMS")
+        self.setWindowIcon(QtGui.QIcon(icon_path))         
         # layout
         layout = QVBoxLayout()
         layout.addWidget(table) 
@@ -364,6 +369,7 @@ class DetailTableModel(QAbstractTableModel):
         """
         global sortedColNum
         global sortedOrder
+        global diskUsageList
         
         sortedColNum = Ncol
         sortedOrder = order
@@ -396,9 +402,12 @@ class DetailTableModel(QAbstractTableModel):
         arraydata__ = getProcessResource()
         arraydata_ = []
         for pid in arraydata__:
-            arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][0] ]
-            arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][1] ]
-            arraydata_.append( arraydata__[pid] )
+            try:
+                arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][0] ]
+                arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][1] ]
+                arraydata_.append( arraydata__[pid] )
+            except KeyError:
+                continue
         self.arraydata = arraydata_
         self.sort(sortedColNum,sortedOrder)
         self.emit(SIGNAL("layoutChanged()")) 

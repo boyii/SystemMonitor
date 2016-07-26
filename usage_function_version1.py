@@ -36,7 +36,10 @@ def cpuUsage():
     return pu.cpu_percent()
 
 def getCPUusage(p):
-    return p.cpu_percent() / pu.cpu_count()
+    try:
+        return p.cpu_percent() / pu.cpu_count()
+    except pu.NoSuchProcess:
+        return 0
 
 def memUsage():
     return pu.virtual_memory()[2]
@@ -123,8 +126,11 @@ def getProcess(pid):
     return p
 
 def deleteProcess(pid):
-    del processList[pid]
-    del prevProcessDiskIOList[pid]
+    try:
+        del processList[pid]
+        del prevProcessDiskIOList[pid]
+    except KeyError:
+        pass
 
 
             
