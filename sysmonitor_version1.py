@@ -13,7 +13,11 @@ from PyQt4 import QtCore, QtGui
 import psutil as pu
 from usage_function_version1 import memUsage, getMemUsage, cpuUsage, getProcessResource, diskIOcountEachProcess, humanize, networkUsageEachDevice, processList, getCPUusage, getProcess
 import copy
+import numpy as np
+from pyqtgraph import GraphicsWindow
+import pyqtgraph
 from Win10_warning import Windows10_notification
+import os 
 
 beforeDiskRead = 0
 beforeDiskWrite = 0
@@ -41,6 +45,8 @@ try:
 except AttributeError:
     def _translate(context, text, disambig):
         return QtGui.QApplication.translate(context, text, disambig)
+
+icon_path = os.path.join( os.path.dirname(os.path.realpath(__file__)), 'SMS.bmp')
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -114,6 +120,7 @@ class Ui_MainWindow(object):
         # update usage
         self.ctimer = QtCore.QTimer()
         QtCore.QObject.connect(self.ctimer, QtCore.SIGNAL("timeout()"), self.updateUsage)
+        self.ntimer = None
         
         # detail window extend
         self.w = None
@@ -136,7 +143,8 @@ class Ui_MainWindow(object):
         self.netUsage.setText("Sent: 0.0 bytes/s | Recv: 0.0 bytes/s")
 
     def retranslateUi(self, MainWindow):
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow", None))
+        MainWindow.setWindowTitle(_translate("MainWindow", "SMS", None))
+        MainWindow.setWindowIcon(QtGui.QIcon(icon_path))          
         self.label.setText(_translate("MainWindow", "CPU usage:      ", None))
         self.label_3.setText(_translate("MainWindow", "Memory usage: ", None))
         self.label_2.setText(_translate("MainWindow", "Disk usage:      ", None))
@@ -146,7 +154,7 @@ class Ui_MainWindow(object):
         self.detailButton.setText(_translate("MainWindow", "Detail >>>", None))
  
         # start ctimer
-        self.ctimer.start(1000)
+        self.ctimer.start(500)
         
     def updateUsage(self):
         global networkUsageList
@@ -158,22 +166,20 @@ class Ui_MainWindow(object):
         for pid in pu.pids():
             try:
                 p = getProcess(pid)
-                if warnCountList[pid][0] == 0 and getCPUusage(p) > 50:
-                    warnCountList[pid][0] = 10
+                if warnCountList[pid][0] == 0 and getCPUusage(p) > 50 and pid != 0:
+                    warnCountList[pid][0] = 20
                     popMsg.show("CPU usage warning",p.name()+" spends a lot of cpu resource")
                 elif getCPUusage(p) > 50:
                     warnCountList[pid][0] -= 1
-                if warnCountList[pid][1] == 0 and getMemUsage(p) > 1024 * 1024 * 1024:
-                    warnCountList[pid][1] = 10
+                if warnCountList[pid][1] == 0 and getMemUsage(p) > 1024 * 1024 * 1024 and pid != 4:
+                    warnCountList[pid][1] = 20
                     popMsg.show("Memory usage warning",p.name()+" spends a lot of memory resource") 
                 elif getMemUsage(p) > 1024 * 1024 * 1024:
                     warnCountList[pid][1] -= 1
             except KeyError:
-                print "Add process"                
                 warnCountList[pid] = [0, 0]
             except pu.NoSuchProcess:
-                print "process was dead"
-                del warnCountList[pid]
+                continue
                 
         self.memUsage.setValue(memUsage())
         self.cpuUsage.setValue(cpuUsage())
@@ -190,80 +196,75 @@ class Ui_MainWindow(object):
         for networkUsage in networkUsageList:
             sentTotal += networkUsage[1]
             recvTotal += networkUsage[2]
-        self.netUsage.setText("Sent: "+humanize(sentTotal)+"/s | Recv: "+humanize(recvTotal)+"/s")
-        
+        self.netUsage.setText("Sent: "+humanize(sentTotal*2)+"/s | Recv: "+humanize(recvTotal*2)+"/s")
 
     def popExtend(self):
         self.w = DetailWindow()
         self.w.show()
        
     def netPopExtend(self):
-        self.nw = NetDetailWindow()
-        self.nw.show()
 
-class NetDetailWindow(QWidget): 
-    def __init__(self): 
-        QWidget.__init__(self) 
-        # create table
-        self.get_table_data()
-        table = self.createTable() 
-         
-        # layout
-        layout = QVBoxLayout()
-        layout.addWidget(table) 
-        self.setLayout(layout)
-        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self.nw = GraphicsWindow()
+        self.nw.setWindowTitle(_translate("MainWindow", "SMS", None))
+        self.nw.setWindowIcon(QtGui.QIcon(icon_path))         
+        # Plot in chunks, adding one new plot curve for every 100 samples
+        self.chunkSize = 10
+        # Remove chunks after we have 10
+        self.maxChunks = 20
+        self.startTime = pyqtgraph.ptime.time()
+        self.nw.nextRow()
+        self.p5 = self.nw.addPlot(colspan=2)
+        self.p5.setLabel('bottom', 'Time', 's')
+        self.p5.setXRange(-10, 0)
+        self.p5.setYRange(0,1000)
+        self.p5.setMouseEnabled(x=False,y=False)
+        self.p5.setMenuEnabled(False)
+        self.p5.showGrid(x=True,y=True,alpha=0.5)
+        self.curves = [[],[]]
+        self.data5 = np.empty((self.chunkSize+1,3))
+        self.ptr5 = 0
+        self.ntimer = QtCore.QTimer()
+        self.ntimer.timeout.connect(self.updateNetGraph)
+        self.ntimer.start(500)
         
-
-    
-    def get_table_data(self):
-        self.tabledata = copy.deepcopy(networkUsageList)
-        for i in range(len(self.tabledata)):
-            self.tabledata[i][1] = humanize(self.tabledata[i][1])+'/s'
-            self.tabledata[i][2] = humanize(self.tabledata[i][2])+'/s'
-
-    def createTable(self):
-        # create the view
-        tv = QTableView()
-
-        # set the table model
-        header = ['Name', 'Sent', 'Recv']
-        tm = NetDetailTableModel(self.tabledata, header, self) 
-        tv.setModel(tm)
-
-        # set the minimum size
-        tv.setMinimumSize(800, 400)
-
-        # hide grid
-        tv.setShowGrid(True)
-
-        # set the font
-        font = QFont("Gulim", 9)
-        tv.setFont(font)
-
-        # hide vertical header
-        vh = tv.verticalHeader()
-        vh.setVisible(False)
-
-        # set horizontal header properties
-        hh = tv.horizontalHeader()
-        hh.setStretchLastSection(True)
-
-        # set column width
-        tv.setColumnWidth(0,300)
-        tv.setColumnWidth(1,200)
-        tv.setColumnWidth(2,200)
+    def updateNetGraph(self):
+        now = pyqtgraph.ptime.time()
+        global networkUsageList
+        netUsage = networkUsageList
+        for c in self.curves[0]:
+            c.setPos(-(now-self.startTime), 0)
+        for c in self.curves[1]:
+            c.setPos(-(now-self.startTime), 0)        
         
-        # set row height
-        nrows = len(self.tabledata)
-        for row in xrange(nrows):
-            tv.setRowHeight(row, 30)
-
-        # enable sorting
-        tv.setSortingEnabled(True)
-
-        return tv
-    
+        i = self.ptr5 % self.chunkSize
+        if i == 0:
+            curve1 = self.p5.plot(pen=(0,2))
+            self.curves[0].append(curve1)
+            curve2 = self.p5.plot(pen=(1,2))
+            self.curves[1].append(curve2)
+            last = self.data5[-1]
+            self.data5 = np.empty((self.chunkSize+1,3))        
+            self.data5[0] = last
+            while len(self.curves[0]) > self.maxChunks:
+                c = self.curves[0].pop(0)
+                self.p5.removeItem(c)
+                d = self.curves[0].pop(0)
+                self.p5.removeItem(d)
+        else:
+            curve1 = self.curves[0][-1]
+            curve2 = self.curves[1][-1]
+        self.data5[i+1,0] = now - self.startTime
+        sentTotal = 0
+        recvTotal = 0
+        for networkUsage in networkUsageList:
+            sentTotal += networkUsage[1]
+            recvTotal += networkUsage[2]
+        self.data5[i+1,1] = sentTotal*2/1024
+        self.data5[i+1,2] = recvTotal*2/1024
+        curve1.setData(x=self.data5[:i+2, 0], y=self.data5[:i+2, 1])
+        curve2.setData(x=self.data5[:i+2, 0], y=self.data5[:i+2, 2])
+        self.ptr5 += 1
+                
 class DetailWindow(QWidget): 
     def __init__(self): 
         QWidget.__init__(self) 
@@ -271,7 +272,8 @@ class DetailWindow(QWidget):
         self.tabledata = []
         self.get_table_data()
         table = self.createTable() 
-         
+        self.setWindowTitle("SMS")
+        self.setWindowIcon(QtGui.QIcon(icon_path))         
         # layout
         layout = QVBoxLayout()
         layout.addWidget(table) 
@@ -367,6 +369,7 @@ class DetailTableModel(QAbstractTableModel):
         """
         global sortedColNum
         global sortedOrder
+        global diskUsageList
         
         sortedColNum = Ncol
         sortedOrder = order
@@ -399,75 +402,15 @@ class DetailTableModel(QAbstractTableModel):
         arraydata__ = getProcessResource()
         arraydata_ = []
         for pid in arraydata__:
-            arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][0] ]
-            arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][1] ]
-            arraydata_.append( arraydata__[pid] )
+            try:
+                arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][0] ]
+                arraydata__[pid] = arraydata__[pid] + [ diskUsageList[ pid ][1] ]
+                arraydata_.append( arraydata__[pid] )
+            except KeyError:
+                continue
         self.arraydata = arraydata_
         self.sort(sortedColNum,sortedOrder)
         self.emit(SIGNAL("layoutChanged()")) 
-        
-
-        
-class NetDetailTableModel(QAbstractTableModel): 
-    def __init__(self, datain, headerdata, parent=None, *args): 
-        """ datain: a list of lists
-            headerdata: a list of strings
-        """
-        QAbstractTableModel.__init__(self, parent, *args) 
-        self.arraydata = datain
-        self.headerdata = headerdata
-        self.timer  = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.update)     
-        self.timer.start(200)
- 
-    def rowCount(self, parent): 
-        return len(self.arraydata) 
- 
-    def columnCount(self, parent): 
-        return len(self.arraydata[0]) 
- 
-    def data(self, index, role):
-        if not index.isValid(): 
-            return QVariant() 
-        elif role != QtCore.Qt.DisplayRole: 
-            return QVariant()
-        return QtCore.QVariant(self.arraydata[index.row()][index.column()]) 
-
-    def headerData(self, col, orientation, role):
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return QVariant(self.headerdata[col])
-        return QVariant()
-
-    def sort(self, Ncol, order):
-        """Sort table by given column number.
-        """
-        global netSortedColNum
-        global netSortedOrder
-        
-        netSortedColNum = Ncol
-        netSortedOrder = order
-        self.emit(SIGNAL("layoutAboutToBeChanged()"))
-        arraydata_ = copy.deepcopy(networkUsageList)
-        if Ncol == 0:
-            self.arraydata = sorted(arraydata_, key=lambda s: s[Ncol].lower())
-        else:
-            self.arraydata = sorted(arraydata_, key=operator.itemgetter(Ncol))
-        if netSortedOrder == Qt.AscendingOrder:
-            self.arraydata.reverse()  
-        for i in range(len(self.arraydata)):
-            self.arraydata[i][1] = humanize(self.arraydata[i][1])+'/s'
-            self.arraydata[i][2] = humanize(self.arraydata[i][2])+'/s'
-        self.emit(SIGNAL("layoutChanged()"))
-        
-    def update(self):
-        global netSortedColNum
-        global netSortedOrder
-        
-        self.emit(SIGNAL("layoutAboutToBeChanged()"))
-        self.arraydata = copy.deepcopy(networkUsageList)
-        self.sort(netSortedColNum,netSortedOrder)
-        self.emit(SIGNAL("layoutChanged()")) 
-
 
 if __name__ == '__main__':
     import sys
