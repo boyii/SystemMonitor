@@ -7,7 +7,7 @@ pip install numpy pyqtgraph pyqt4 wmi psutil
 `git clone https://github.com/boyii/SystemMonitor`  
 or  
 you can download exe file at  
-https://drive.google.com/open?id=0B_SJtFULh0GmSVpvQ1YzWWx3Z2s  
+https://drive.google.com/open?id=0B_SJtFULh0GmXzdiX0hoRlppaU0  
 
 # User guide  
 If you execute sysmonitor_version1.py or dist/sysmonitor_version1.exe,  
